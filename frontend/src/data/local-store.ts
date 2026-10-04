@@ -41,7 +41,12 @@ export function listRows(key: string): EntryRow[] {
 }
 
 export function saveRows(key: string, rows: EntryRow[]): void {
-  const next = { ...allRows(), [key]: rows }
+  saveAll({ ...allRows(), [key]: rows })
+}
+
+// 跨模块的一笔写入：内存缓存与 localStorage 都整包替换，调用方可以在同一笔里改多个模块，
+// 读侧不可能看到只改了一半的中间态（牵引落位必须任务与机位台账同生共死）。
+export function saveAll(next: Record<string, EntryRow[]>): void {
   cache = next
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))

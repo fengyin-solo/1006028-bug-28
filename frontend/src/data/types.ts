@@ -17,6 +17,8 @@ export type ModuleMeta = {
   statuses: string[]
   actions: string[]
   actionTargets: Record<string, string>
+  // 动作允许的前置状态：缺省表示沿用通用约束（已在终态不可再动）。
+  actionSources?: Record<string, string>
   metrics: string[]
 }
 
