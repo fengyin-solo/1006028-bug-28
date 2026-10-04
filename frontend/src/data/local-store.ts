@@ -41,7 +41,12 @@ export function listRows(key: string): EntryRow[] {
 }
 
 export function saveRows(key: string, rows: EntryRow[]): void {
-  const next = { ...allRows(), [key]: rows }
+  commitAll({ [key]: rows })
+}
+
+// 跨模块的同一笔事务：任务状态与机位占用要么一起落库、要么都不动，杜绝两边读到不同源。
+export function commitAll(patch: Record<string, EntryRow[]>): void {
+  const next = { ...allRows(), ...patch }
   cache = next
   if (typeof window !== 'undefined' && window.localStorage) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next))

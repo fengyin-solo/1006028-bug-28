@@ -1,5 +1,15 @@
 import { MODULE_BY_KEY } from '@/data/modules'
 import { allRows, listRows, resetRows, saveRows } from '@/data/local-store'
+import {
+  ensureLegacyBackfill,
+  occupancyBoard,
+  runTowAction,
+  enrichTows,
+  towStats,
+  resetBackfillGuard,
+  type EnrichedTow,
+  type OccupancyBoardRow,
+} from '@/data/tow-domain'
 import type { ActionResult, EntryRow, ModuleMeta, OverviewResult, PageResult } from '@/data/types'
 
 // 会写进数据的「往回走」动作：命中就把这条记录标成异常态，看板上能一眼看出来。
@@ -13,13 +23,16 @@ export function moduleMeta(key: string): ModuleMeta {
   return meta
 }
 
-export function filterRows(rows: EntryRow[], filters: Record<string, string>): EntryRow[] {
+export function filterRows<T extends { id: number }>(
+  rows: T[],
+  filters: Record<string, string>,
+): T[] {
   const pairs = Object.entries(filters).filter(([, value]) => value.trim() !== '')
   if (pairs.length === 0) {
     return rows
   }
   return rows.filter((row) =>
-    pairs.every(([field, value]) => String(row[field] ?? '').includes(value.trim())),
+    pairs.every(([field, value]) => String((row as Record<string, unknown>)[field] ?? '').includes(value.trim())),
   )
 }
 
@@ -28,7 +41,32 @@ export function listEntries(key: string, filters: Record<string, string> = {}): 
   return { items: matched, total: matched.length, page: 1, size: matched.length }
 }
 
+// 牵引清单：先补存量，再走机位台账派生口径；清单页与详情弹窗共用这一份富化行。
+export function listTowEntries(filters: Record<string, string> = {}): {
+  items: EnrichedTow[]
+  total: number
+} {
+  ensureLegacyBackfill()
+  const matched = filterRows(enrichTows(listRows('tow')), filters)
+  return { items: matched, total: matched.length }
+}
+
+// 机位落位视图：占用只取自停机位占用台账，牵引任务状态不参与占用计算。
+export function standOccupancyBoard(): OccupancyBoardRow[] {
+  ensureLegacyBackfill()
+  return occupancyBoard()
+}
+
+export function towStatCards() {
+  ensureLegacyBackfill()
+  return towStats()
+}
+
 export function runAction(key: string, id: number, action: string): ActionResult {
+  if (key === 'tow') {
+    ensureLegacyBackfill()
+    return runTowAction(id, action)
+  }
   const meta = moduleMeta(key)
   const target = meta.actionTargets[action]
   if (!target) {
@@ -58,6 +96,9 @@ export function runAction(key: string, id: number, action: string): ActionResult
 
 export function resetModule(key: string): PageResult {
   resetRows(key)
+  if (key === 'tow') {
+    resetBackfillGuard()
+  }
   return listEntries(key)
 }
 
@@ -85,6 +126,7 @@ export function downloadEntries(key: string): void {
 }
 
 export function loadOverview(): OverviewResult {
+  ensureLegacyBackfill()
   const rows = allRows()
   const modules = [...MODULE_BY_KEY.values()].map((meta) => {
     const entries = rows[meta.key] ?? []
